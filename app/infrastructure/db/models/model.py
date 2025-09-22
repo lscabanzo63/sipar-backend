@@ -1,7 +1,7 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import Boolean, Date, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
@@ -11,7 +11,9 @@ class Base(DeclarativeBase):
 class ConjuntoResidencial(Base):
     __tablename__ = 'conjunto_residencial'
     __table_args__ = (
-        PrimaryKeyConstraint('id_conjunto_residencial', name='conjunto_residencial_pkey'),
+        CheckConstraint("email_contacto IS NULL OR email_contacto::text ~* '^[A-Z0-9._%%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$'::text", name='chk_conjunto_email_contacto'),
+        CheckConstraint("telefono_contacto IS NULL OR telefono_contacto::text ~ '^[0-9]{7,15}$'::text", name='chk_conjunto_telefono_contacto'),
+        PrimaryKeyConstraint('id_conjunto_residencial', name='conjunto_residencial_pkey')
     )
 
     id_conjunto_residencial: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -20,6 +22,8 @@ class ConjuntoResidencial(Base):
     numero_torres: Mapped[Optional[int]] = mapped_column(Integer)
     numero_apartamentos: Mapped[Optional[int]] = mapped_column(Integer)
     ciudad_id: Mapped[Optional[int]] = mapped_column(Integer)
+    email_contacto: Mapped[Optional[str]] = mapped_column(String(255))
+    telefono_contacto: Mapped[Optional[str]] = mapped_column(String(15))
 
     apartamento: Mapped[list['Apartamento']] = relationship('Apartamento', back_populates='conjunto_residencial')
     sorteo: Mapped[list['Sorteo']] = relationship('Sorteo', back_populates='conjunto_residencial')
