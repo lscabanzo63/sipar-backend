@@ -29,11 +29,8 @@ def first_time_register(payload: FirstTimeRegisterIn, db: Session = Depends(get_
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     try:
         out = AuthLoginUseCase(UsuariosRepository(db)).execute(payload)
-        db.commit()  # si dentro del use case pones disable_first_time
         return out
     except ValueError as ve:
-        db.rollback()
         raise HTTPException(status_code=401, detail=str(ve))
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=500, detail=f"Error en login: {type(e).__name__}: {e}")
