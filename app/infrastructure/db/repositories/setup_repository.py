@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from app.infrastructure.db.models.model import (
@@ -30,7 +30,6 @@ class SetupRepository:
         self,
         *,
         id_conjunto: int,
-        id_usuario: int,
         email: Optional[str],
         nombre_conjunto: str,
         ciudad_id: int,
@@ -38,15 +37,10 @@ class SetupRepository:
         telefono: Optional[str],
         cantidad_parqueaderos: int,
     ) -> int:
-        # Validaciones de existencia
         cjto = self.db.get(ConjuntoResidencial, id_conjunto)
         if not cjto:
             return 404
-        usr = self.db.get(Usuario, id_usuario)
-        if not usr:
-            return 404
 
-        # Reglas de negocio
         asignados = self.db.scalar(
             select(func.count(func.distinct(Apartamento.parqueadero_id)))
             .where(Apartamento.conjunto_residencial_id == id_conjunto)
@@ -61,7 +55,7 @@ class SetupRepository:
         email = email.lower().strip() if email else None
         telefono = telefono.strip() if telefono else None
 
-        # Persistir en CONJUNTO (ya existen email_contacto y telefono_contacto)
+        # Persistir en CONJUNTO
         cjto.nombre_conjunto = nombre_conjunto
         cjto.direccion_conjunto = direccion
         cjto.ciudad_id = ciudad_id

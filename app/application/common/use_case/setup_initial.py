@@ -26,7 +26,7 @@ class SetupInitialUpdateUseCase:
         self.repo = repo
 
     def execute(self, payload: SetupInitialUpdateIn) -> SetupActionResult:
-        # Validación de “espacios en blanco” (string vacía tras strip)
+        # Validación “espacios en blanco”
         errors: list[FieldError] = []
         def is_blank(s: str | None) -> bool:
             return s is not None and s.strip() == ""
@@ -43,10 +43,8 @@ class SetupInitialUpdateUseCase:
         if errors:
             return SetupActionResult(status="validation_error", message="Datos inválidos", errors=errors)
 
-        # Guardar
         code = self.repo.update_initial(
             id_conjunto=payload.id_conjunto,
-            id_usuario=payload.id_usuario,
             email=(payload.email.lower().strip() if payload.email else None),
             nombre_conjunto=payload.nombre_conjunto,
             ciudad_id=payload.ciudad_id,
@@ -56,7 +54,7 @@ class SetupInitialUpdateUseCase:
         )
 
         if code == 404:
-            return SetupActionResult(status="not_found", message="Conjunto o usuario no encontrado")
+            return SetupActionResult(status="not_found", message="Conjunto no encontrado")
         if code == 409:
             return SetupActionResult(
                 status="conflict",

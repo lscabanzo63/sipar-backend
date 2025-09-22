@@ -15,7 +15,7 @@ router = APIRouter(prefix="/setup", tags=["Setup"])
 @router.get("/initial", response_model=SetupInitialOut)
 def get_initial_config(
     id_conjunto: int = Query(..., gt=0),
-    id_usuario: int = Query(..., gt=0),
+    id_usuario: int = Query(..., gt=0),   # <- si luego quieres, lo quitamos también del GET
     db: Session = Depends(get_db)
 ):
     try:
@@ -31,7 +31,6 @@ def patch_initial_config(payload: SetupInitialUpdateIn, db: Session = Depends(ge
     try:
         uc = SetupInitialUpdateUseCase(SetupRepository(db))
         result = uc.execute(payload)
-        # commit solo si guardó (status ok)
         if result.status == "ok":
             db.commit()
         else:
