@@ -47,7 +47,7 @@ class SetupRepository:
         )
         if not ciudad_row:
             return 404
-    
+    #
         ciudad_id = ciudad_row.id_ciudad
 
         asignados = self.db.scalar(
