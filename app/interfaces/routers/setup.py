@@ -15,7 +15,7 @@ router = APIRouter(prefix="/setup", tags=["Setup"])
 @router.get("/initial", response_model=SetupInitialOut)
 def get_initial_config(
     id_conjunto: int = Query(..., gt=0),
-    id_usuario: int = Query(..., gt=0),   # <- si luego quieres, lo quitamos también del GET
+    id_usuario: int = Query(..., gt=0),
     db: Session = Depends(get_db)
 ):
     try:

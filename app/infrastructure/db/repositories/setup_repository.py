@@ -32,14 +32,23 @@ class SetupRepository:
         id_conjunto: int,
         email: Optional[str],
         nombre_conjunto: str,
-        ciudad_id: int,
+        ciudad: str,
         direccion: Optional[str],
         telefono: Optional[str],
         cantidad_parqueaderos: int,
     ) -> int:
+        
         cjto = self.db.get(ConjuntoResidencial, id_conjunto)
         if not cjto:
             return 404
+        
+        ciudad_row = self.db.scalar(
+            select(Ciudad).where(Ciudad.nombre_ciudad == ciudad).limit(1)
+        )
+        if not ciudad_row:
+            return 404
+    
+        ciudad_id = ciudad_row.id_ciudad
 
         asignados = self.db.scalar(
             select(func.count(func.distinct(Apartamento.parqueadero_id)))
