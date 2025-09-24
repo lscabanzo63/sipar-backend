@@ -205,6 +205,8 @@ class Apartamento(Base):
     estado_apartamento_id: Mapped[Optional[int]] = mapped_column(Integer)
     conjunto_residencial_id: Mapped[Optional[int]] = mapped_column(Integer)
     parqueadero_id: Mapped[Optional[int]] = mapped_column(Integer)
+    nombre_torre: Mapped[Optional[str]] = mapped_column(String(50))
+    piso: Mapped[Optional[int]] = mapped_column(Integer)
 
     conjunto_residencial: Mapped[Optional['ConjuntoResidencial']] = relationship('ConjuntoResidencial', back_populates='apartamento')
     estado_apartamento: Mapped[Optional['EstadoApartamento']] = relationship('EstadoApartamento', back_populates='apartamento')
