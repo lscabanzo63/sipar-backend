@@ -8,11 +8,7 @@ class AuthLoginUseCase:
     def execute(self, payload: LoginIn) -> LoginOut:
         # Primero intentamos por email (requerimiento actual)
         user = self.repo.get_by_email_and_pass(payload.email, payload.contrasena)
-
-        # Si aún no tienes email en BD/ORM y quieres permitir login por teléfono como transición, descomenta:
-        # if not user:
-        #     user = self.repo.get_by_phone_and_pass(payload.email, payload.contrasena)  # ojo: aquí email vendría con el teléfono. Solo para pruebas.
-
+        
         if not user:
             raise ValueError("Credenciales inválidas")
 

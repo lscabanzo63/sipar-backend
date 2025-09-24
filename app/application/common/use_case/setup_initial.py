@@ -1,5 +1,5 @@
-from app.application.common.use_case.schemas.setup import (
-    SetupInitialOut, SetupInitialUpdateIn, SetupActionResult, FieldError
+from app.application.common.use_case.schemas.setup_schemas import (
+    SetupInitialOut, SetupInitialUpdateIn, SetupActionResult, FieldError, TorresConfigIn
 )
 from app.infrastructure.db.repositories.setup_repository import SetupRepository
 
@@ -66,3 +66,46 @@ class SetupInitialUpdateUseCase:
             )
 
         return SetupActionResult(status="ok", message="Datos guardados correctamente")
+
+class ConfigTorresUseCase:
+    def __init__(self, repo: SetupRepository):
+        self.repo = repo
+
+    def execute(self, payload: TorresConfigIn):
+        """
+        Genera y guarda apartamentos para un conjunto residencial según
+        torres, pisos por torre y apartamentos por piso.
+        """
+        # Obtener conjunto y usuario
+        conjunto = self.repo.get_conjunto(payload.id_conjunto)
+        if not conjunto:
+            raise ValueError("Conjunto no encontrado")
+
+        usuario = self.repo.get_usuario(payload.id_usuario)
+        if not usuario:
+            raise ValueError("Usuario no encontrado")
+
+        # Validar numeración automática
+        if payload.numeracion_automatica.strip().upper() != "NUMERACION_AUTOMATICA":
+            raise ValueError("Valor de numeracion_automatica inválido")
+
+        # Generar apartamentos automáticamente dentro del repository
+        self.repo.generar_apartamentos(
+            id_conjunto=payload.id_conjunto,
+            torres=payload.num_torres,
+            pisos_x_torre=payload.pisos_x_torre,
+            aptos_x_piso=payload.aptos_x_piso
+        )
+
+        # Actualizar número total de torres
+        self.repo.update_numero_torres(payload.id_conjunto, payload.num_torres)
+
+        # Marcar first_time = False para el usuario que ejecuta
+        self.repo.marcar_first_time_false(payload.id_usuario)
+
+        # Respuesta final
+        total_apartamentos = payload.num_torres * payload.pisos_x_torre * payload.aptos_x_piso
+        return {
+            "status": "ok",
+            "message": f"Apartamentos generados correctamente: {total_apartamentos} aptos en {payload.num_torres} torres"
+        }
