@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.session import engine
 from app.interfaces.routers.auth import router as auth_router
-from app.interfaces.routers.setup import router as setup_router
+from app.interfaces.routers.setup_router import router as setup_router
 
 
 app = FastAPI(title="SIPAR API")
