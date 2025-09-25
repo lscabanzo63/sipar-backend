@@ -17,7 +17,7 @@ class SetupInitialOut(BaseModel):
 class FieldError(BaseModel):
     field: str
     message: str
-    code: str  # "blank" | "format" | "invalid_value"...
+    code: str 
 
 class SetupActionResult(BaseModel):
     status: str       # ok | validation_error | not_found | conflict | error
@@ -28,12 +28,12 @@ class SetupInitialUpdateIn(BaseModel):
     id_conjunto: int
     email: Optional[EmailStr] = None
     nombre_conjunto: TextoCorto
-    ciudad_id: int
+    ciudad: TextoCorto          
     direccion: Optional[Direccion] = None
     telefono: Optional[Tel] = None
     cantidad_parqueaderos: int
 
-    @field_validator("id_conjunto", "ciudad_id")
+    @field_validator("id_conjunto")
     @classmethod
     def positive_int(cls, v: int) -> int:
         if v <= 0:
@@ -45,4 +45,19 @@ class SetupInitialUpdateIn(BaseModel):
     def non_negative(cls, v: int) -> int:
         if v < 0:
             raise ValueError("La cantidad de parqueaderos no puede ser negativa")
+        return v
+    
+class TorresConfigIn(BaseModel):
+    id_conjunto: int
+    id_usuario: int
+    num_torres: int
+    pisos_x_torre: int
+    aptos_x_piso: int
+    numeracion_automatica: str  # se espera "NUMERACION_AUTOMATICA"
+
+    @field_validator("num_torres", "pisos_x_torre", "aptos_x_piso")
+    @classmethod
+    def positive_int(cls, v: int):
+        if v <= 0:
+            raise ValueError("Debe ser un número positivo")
         return v

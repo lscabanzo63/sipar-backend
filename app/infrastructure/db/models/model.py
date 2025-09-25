@@ -1,32 +1,11 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, text
+from sqlalchemy import Boolean, Date, ForeignKeyConstraint, Integer, PrimaryKeyConstraint, String, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
-
-
-class ConjuntoResidencial(Base):
-    __tablename__ = 'conjunto_residencial'
-    __table_args__ = (
-        CheckConstraint("email_contacto IS NULL OR email_contacto::text ~* '^[A-Z0-9._%%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$'::text", name='chk_conjunto_email_contacto'),
-        CheckConstraint("telefono_contacto IS NULL OR telefono_contacto::text ~ '^[0-9]{7,15}$'::text", name='chk_conjunto_telefono_contacto'),
-        PrimaryKeyConstraint('id_conjunto_residencial', name='conjunto_residencial_pkey')
-    )
-
-    id_conjunto_residencial: Mapped[int] = mapped_column(Integer, primary_key=True)
-    nombre_conjunto: Mapped[str] = mapped_column(String(100), nullable=False)
-    direccion_conjunto: Mapped[Optional[str]] = mapped_column(String(255))
-    numero_torres: Mapped[Optional[int]] = mapped_column(Integer)
-    numero_apartamentos: Mapped[Optional[int]] = mapped_column(Integer)
-    ciudad_id: Mapped[Optional[int]] = mapped_column(Integer)
-    email_contacto: Mapped[Optional[str]] = mapped_column(String(255))
-    telefono_contacto: Mapped[Optional[str]] = mapped_column(String(15))
-
-    apartamento: Mapped[list['Apartamento']] = relationship('Apartamento', back_populates='conjunto_residencial')
-    sorteo: Mapped[list['Sorteo']] = relationship('Sorteo', back_populates='conjunto_residencial')
 
 
 class Departamento(Base):
@@ -139,6 +118,7 @@ class Ciudad(Base):
     departamento_id: Mapped[Optional[int]] = mapped_column(Integer)
 
     departamento: Mapped[Optional['Departamento']] = relationship('Departamento', back_populates='ciudad')
+    conjunto_residencial: Mapped[list['ConjuntoResidencial']] = relationship('ConjuntoResidencial', back_populates='ciudad')
 
 
 class RolPermiso(Base):
@@ -158,15 +138,35 @@ class RolPermiso(Base):
     usuario: Mapped[list['Usuario']] = relationship('Usuario', back_populates='rol_permiso')
 
 
+class ConjuntoResidencial(Base):
+    __tablename__ = 'conjunto_residencial'
+    __table_args__ = (
+        ForeignKeyConstraint(['ciudad_id'], ['ciudad.id_ciudad'], name='conjunto_residencial_ciudad_id_fkey'),
+        PrimaryKeyConstraint('id_conjunto_residencial', name='conjunto_residencial_pkey')
+    )
+
+    id_conjunto_residencial: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre_conjunto: Mapped[str] = mapped_column(String(100), nullable=False)
+    direccion_conjunto: Mapped[Optional[str]] = mapped_column(String(255))
+    numero_torres: Mapped[Optional[int]] = mapped_column(Integer)
+    numero_apartamentos: Mapped[Optional[int]] = mapped_column(Integer)
+    ciudad_id: Mapped[Optional[int]] = mapped_column(Integer)
+    email_contacto: Mapped[Optional[str]] = mapped_column(String(255))
+    telefono_contacto: Mapped[Optional[str]] = mapped_column(String(15))
+    numero_parqueaderos: Mapped[Optional[int]] = mapped_column(Integer)
+
+    ciudad: Mapped[Optional['Ciudad']] = relationship('Ciudad', back_populates='conjunto_residencial')
+    apartamento: Mapped[list['Apartamento']] = relationship('Apartamento', back_populates='conjunto_residencial')
+    sorteo: Mapped[list['Sorteo']] = relationship('Sorteo', back_populates='conjunto_residencial')
+
+
 class Usuario(Base):
     __tablename__ = 'usuario'
     __table_args__ = (
         ForeignKeyConstraint(['administracion_id'], ['norma.id_norma'], name='usuario_administracion_id_fkey'),
         ForeignKeyConstraint(['rol_permiso_id'], ['rol_permiso.id_rol_permiso'], name='usuario_rol_permiso_id_fkey'),
         ForeignKeyConstraint(['tipo_usuario_id'], ['tipo_usuario.id_tipo_usuario'], name='usuario_tipo_usuario_id_fkey'),
-        PrimaryKeyConstraint('id_usuario', name='usuario_pkey'),
-        Index('uq_usuario_documento', 'documento', unique=True),
-        Index('uq_usuario_email', 'email', unique=True)
+        PrimaryKeyConstraint('id_usuario', name='usuario_pkey')
     )
 
     id_usuario: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -205,6 +205,8 @@ class Apartamento(Base):
     estado_apartamento_id: Mapped[Optional[int]] = mapped_column(Integer)
     conjunto_residencial_id: Mapped[Optional[int]] = mapped_column(Integer)
     parqueadero_id: Mapped[Optional[int]] = mapped_column(Integer)
+    nombre_torre: Mapped[Optional[str]] = mapped_column(String(50))
+    piso: Mapped[Optional[int]] = mapped_column(Integer)
 
     conjunto_residencial: Mapped[Optional['ConjuntoResidencial']] = relationship('ConjuntoResidencial', back_populates='apartamento')
     estado_apartamento: Mapped[Optional['EstadoApartamento']] = relationship('EstadoApartamento', back_populates='apartamento')
