@@ -8,8 +8,12 @@ from app.infrastructure.db.repositories.setup_repository import SetupRepository
 from app.application.common.use_case.setup_initial import (
     SetupInitialGetUseCase, SetupInitialUpdateUseCase, ConfigTorresUseCase
 )
+import logging
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 router = APIRouter(prefix="/setup", tags=["Setup"])
+logger = logging.getLogger("uvicorn.error")
 
 @router.get("/initial", response_model=SetupInitialOut)
 def get_initial_config(
@@ -30,16 +34,63 @@ def patch_initial_config(payload: SetupInitialUpdateIn, db: Session = Depends(ge
     try:
         uc = SetupInitialUpdateUseCase(SetupRepository(db))
         result = uc.execute(payload)
+
+        # Normaliza a minúsculas para evitar confusiones "OK"/"ok"
+        result.status = (result.status or "").lower()
+
         if result.status == "ok":
             db.commit()
         else:
             db.rollback()
+
         return result
-    except Exception as e:
+
+    except (ValueError,) as e:
         db.rollback()
+        logger.warning("Validation error in /initial: %s", e)
+        return SetupActionResult(
+            status="validation_error",
+            message=str(e),
+        )
+
+    except (NoResultFound,) as e:
+        db.rollback()
+        logger.info("Not found in /initial: %s", e)
+        return SetupActionResult(
+            status="not_found",
+            message="Recurso no encontrado."
+        )
+
+    except (MultipleResultsFound,) as e:
+        db.rollback()
+        logger.warning("Data inconsistency in /initial: %s", e)
+        return SetupActionResult(
+            status="conflict",
+            message="Inconsistencia de datos: múltiples registros."
+        )
+
+    except (IntegrityError,) as e:
+        db.rollback()
+        logger.error("IntegrityError in /initial: %s", e, exc_info=True)
+        return SetupActionResult(
+            status="conflict",
+            message="Conflicto de integridad (duplicado o FK)."
+        )
+
+    except (SQLAlchemyError,) as e:
+        db.rollback()
+        logger.error("SQLAlchemyError in /initial: %s", e, exc_info=True)
         return SetupActionResult(
             status="error",
-            message=f"Error al guardar configuración: {type(e).__name__}: {e}"
+            message="Error de base de datos."
+        )
+
+    except Exception as e:
+        db.rollback()
+        logger.exception("Unhandled error in /initial")
+        return SetupActionResult(
+            status="error",
+            message=f"Error no controlado: {type(e).__name__}"
         )
     
 @router.post("/torres")

@@ -22,51 +22,27 @@ class SetupInitialGetUseCase:
         )
 
 class SetupInitialUpdateUseCase:
-    def __init__(self, repo: SetupRepository):
+    def __init__(self, repo):
         self.repo = repo
 
     def execute(self, payload: SetupInitialUpdateIn) -> SetupActionResult:
-        errors: list[FieldError] = []
-
-    # Validación de campos vacíos
-        def is_blank(s: str | None) -> bool:
-            return s is not None and s.strip() == ""
-
-        if is_blank(payload.nombre_conjunto):
-            errors.append(FieldError(field="nombre_conjunto", code="blank", message="El nombre no puede estar vacío"))
-        if payload.direccion and is_blank(payload.direccion):
-            errors.append(FieldError(field="direccion", code="blank", message="La dirección no puede estar vacía"))
-        if payload.email and is_blank(payload.email):
-            errors.append(FieldError(field="email", code="blank", message="El correo no puede estar vacío"))
-        if payload.telefono and is_blank(payload.telefono):
-            errors.append(FieldError(field="telefono", code="blank", message="El teléfono no puede estar vacío"))
-        if payload.ciudad and is_blank(payload.ciudad):
-            errors.append(FieldError(field="ciudad", code="blank", message="La ciudad no puede estar vacía"))
-
-        if errors:
-            return SetupActionResult(status="validation_error", message="Datos inválidos", errors=errors)
-
-        # Guardar usando repository
         code = self.repo.update_initial(
             id_conjunto=payload.id_conjunto,
             email=payload.email,
             nombre_conjunto=payload.nombre_conjunto,
-            ciudad=payload.ciudad,  # string
+            ciudad=payload.ciudad,
             direccion=payload.direccion,
             telefono=payload.telefono,
             cantidad_parqueaderos=payload.cantidad_parqueaderos,
         )
-
+        if code == 200:
+            return SetupActionResult(status="ok", message="Configuración guardada")
         if code == 404:
-            return SetupActionResult(status="not_found", message="Conjunto o ciudad no encontrada")
+            return SetupActionResult(status="not_found", message="Conjunto o ciudad no existe")
         if code == 409:
-            return SetupActionResult(
-                status="conflict",
-                message="La cantidad de parqueaderos no puede ser menor a la ya asignada"
-            )
-
-        return SetupActionResult(status="ok", message="Datos guardados correctamente")
-
+            return SetupActionResult(status="conflict", message="Capacidad menor a parqueaderos asignados")
+        return SetupActionResult(status="error", message="Error no controlado")
+    
 class ConfigTorresUseCase:
     def __init__(self, repo: SetupRepository):
         self.repo = repo
