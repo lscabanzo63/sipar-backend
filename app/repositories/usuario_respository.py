@@ -1,7 +1,7 @@
 import hmac
 from sqlalchemy.orm import Session
-from sqlalchemy import select
-from typing import Optional
+from sqlalchemy import select, text
+from typing import Optional, List, Tuple
 from app.infrastructure.db.models.model import Usuario, Apartamento
 
 class UsuariosRepository:
@@ -40,3 +40,25 @@ class UsuariosRepository:
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+    
+    def usuarios_del_conjunto(self, conjunto_id:int) -> List[dict]:
+            sql = text("""
+                SELECT u.id_usuario, u.tipo_usuario_id, u.administracion, a.id_apartamento
+                FROM usuario u
+                JOIN apartamento a ON a.usuario_id = u.id_usuario
+                WHERE a.conjunto_residencial_id = :cid
+            """)
+            with self.engine.begin() as con:
+                return [dict(r) for r in con.execute(sql, {"cid":conjunto_id}).mappings().all()]
+
+    def conteo_ganados(self, ids: List[int]) -> dict:
+        if not ids: return {}
+        sql = text("""
+                SELECT usuario_id, COUNT(*) AS c
+                FROM resultado_sorteo_detalle
+                WHERE usuario_id = ANY(:ids)
+                GROUP BY usuario_id
+            """)
+        with self.engine.begin() as con:
+                rows = con.execute(sql, {"ids": ids}).mappings().all()
+                return {r["usuario_id"]: r["c"] for r in rows}

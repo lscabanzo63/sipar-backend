@@ -1,5 +1,5 @@
 from app.application.common.use_case.schemas.auth import LoginIn, LoginOut
-from app.infrastructure.db.repositories.usuario_respository import UsuariosRepository
+from app.repositories.usuario_respository import UsuariosRepository
 
 class AuthLoginUseCase:
     def __init__(self, repo: UsuariosRepository):

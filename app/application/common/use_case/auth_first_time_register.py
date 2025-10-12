@@ -1,5 +1,5 @@
 from app.application.common.use_case.schemas.auth import FirstTimeRegisterIn, LoginOut
-from app.infrastructure.db.repositories.usuario_respository import UsuariosRepository
+from app.repositories.usuario_respository import UsuariosRepository
 
 class FirstTimeRegisterUseCase:
     def __init__(self, users: UsuariosRepository):
