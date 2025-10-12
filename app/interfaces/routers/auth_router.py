@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
+from sqlalchemy import select
 from app.infrastructure.db.session import get_db
 from app.application.common.use_case.schemas.auth import (
     FirstTimeRegisterIn, LoginIn, LoginOut,
@@ -8,7 +8,7 @@ from app.application.common.use_case.schemas.auth import (
 from app.infrastructure.db.repositories.usuario_respository import UsuariosRepository
 from app.application.common.use_case.auth_first_time_register import FirstTimeRegisterUseCase
 from app.application.common.use_case.schemas.auth_login import AuthLoginUseCase
-from app.infrastructure.db.models.model import Usuario, Norma, ConjuntoResidencial
+from app.infrastructure.db.models.model import Usuario , Apartamento
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -17,34 +17,33 @@ def first_time_register(payload: FirstTimeRegisterIn, db: Session = Depends(get_
     try:
         out = FirstTimeRegisterUseCase(UsuariosRepository(db)).execute(payload)
         db.commit()
-        return out  # first_time: true
+        return out
     except ValueError as ve:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         db.rollback()
-        # En desarrollo puedes devolver e para ver el motivo exacto
-        raise HTTPException(status_code=500, detail=f"Error en registro first-time: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error en registro first-time: {type(e)._name_}: {e}")
 
 @router.post("/login", response_model=LoginOut)
 def login(payload: LoginIn, db: Session = Depends(get_db)):
-    repo = UsuariosRepository(db)
-    user = repo.get_by_email_and_pass(payload.email, payload.contrasena)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user = db.execute(
+        select(Usuario).where(Usuario.email == payload.email)
+    ).scalar_one_or_none()
 
-    conjunto_id = None
-    if user.administracion_id:
-        norma = db.get(Norma, user.administracion_id)
-        if norma:
-            conjunto = db.get(ConjuntoResidencial, norma.id_norma)  # Ajusta si existe un campo específico
-            if conjunto:
-                conjunto_id = conjunto.id_conjunto_residencial
+    if not user or user.contrasena != payload.contrasena:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credenciales inválidas")
 
-    return {
-        "id_usuario": user.id_usuario,
-        "email": user.email,
-        "nombre_completo": f"{user.nombre.strip()} {user.apellidos.strip()}",
-        "first_time": user.first_time,
-        "conjunto_residencial_id": conjunto_id
-    }
+    conjunto_id = db.execute(
+        select(Apartamento.conjunto_residencial_id).where(
+            Apartamento.usuario_id == user.id_usuario
+        )
+    ).scalar_one_or_none()
+
+    return LoginOut(
+        id_usuario=user.id_usuario,
+        email=user.email,
+        nombre_completo=f"{user.nombre} {user.apellidos}",
+        first_time=bool(getattr(user, "first_time", False)),
+        conjunto_residencial_id=conjunto_id
+    )
