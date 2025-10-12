@@ -97,7 +97,7 @@ def patch_initial_config(payload: SetupInitialUpdateIn, db: Session = Depends(ge
 def configurar_torres(payload: TorresConfigIn, db: Session = Depends(get_db)):
     try:
         uc = ConfigTorresUseCase(SetupRepository(db))
-        result = uc.execute(payload)
+        result = uc.execute(payload)   
         db.commit()
         return result
     except ValueError as ve:

@@ -47,41 +47,15 @@ class ConfigTorresUseCase:
     def __init__(self, repo: SetupRepository):
         self.repo = repo
 
-    def execute(self, payload: TorresConfigIn):
-        """
-        Genera y guarda apartamentos para un conjunto residencial según
-        torres, pisos por torre y apartamentos por piso.
-        """
-        # Obtener conjunto y usuario
-        conjunto = self.repo.get_conjunto(payload.id_conjunto)
-        if not conjunto:
-            raise ValueError("Conjunto no encontrado")
+    def execute(self, payload: TorresConfigIn) -> dict:
+        if payload.numeracion_automatica != "NUMERACION_AUTOMATICA":
+            raise ValueError("numeracion_automatica inválida")
 
-        usuario = self.repo.get_usuario(payload.id_usuario)
-        if not usuario:
-            raise ValueError("Usuario no encontrado")
-
-        # Validar numeración automática
-        if payload.numeracion_automatica.strip().upper() != "NUMERACION_AUTOMATICA":
-            raise ValueError("Valor de numeracion_automatica inválido")
-
-        # Generar apartamentos automáticamente dentro del repository
-        self.repo.generar_apartamentos(
+        resultado = self.repo.generar_apartamentos_preservando_asignaciones(
             id_conjunto=payload.id_conjunto,
             torres=payload.num_torres,
             pisos_x_torre=payload.pisos_x_torre,
-            aptos_x_piso=payload.aptos_x_piso
+            aptos_x_piso=payload.aptos_x_piso,
+            reset_parqueadero=True,  # ponlo en False si no quieres tocarlo nunca
         )
-
-        # Actualizar número total de torres
-        self.repo.update_numero_torres(payload.id_conjunto, payload.num_torres)
-
-        # Marcar first_time = False para el usuario que ejecuta
-        self.repo.marcar_first_time_false(payload.id_usuario)
-
-        # Respuesta final
-        total_apartamentos = payload.num_torres * payload.pisos_x_torre * payload.aptos_x_piso
-        return {
-            "status": "ok",
-            "message": f"Apartamentos generados correctamente: {total_apartamentos} aptos en {payload.num_torres} torres"
-        }
+        return resultado

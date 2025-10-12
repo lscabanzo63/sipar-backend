@@ -1,6 +1,6 @@
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, delete
 from app.infrastructure.db.models.model import (
     ConjuntoResidencial, Ciudad, Usuario, Apartamento
 )
@@ -17,9 +17,14 @@ class SetupRepository:
         )
         return self.db.execute(stmt).scalars().first() is not None
 
+    def get_conjunto(self, id_conjunto: int) -> Optional[ConjuntoResidencial]:
+        return self.db.get(ConjuntoResidencial, id_conjunto)
+
+    def get_usuario(self, id_usuario: int) -> Optional[Usuario]:
+        return self.db.get(Usuario, id_usuario)
+
     def user_associated_with_conjunto(self, id_usuario: int, id_conjunto: int) -> bool:
-    # Versión basada únicamente en apartamento (recomendada dado tu esquema)
-        stmt_apto = (
+        stmt = (
             select(Apartamento.id_apartamento)
             .where(
                 Apartamento.usuario_id == id_usuario,
@@ -27,8 +32,8 @@ class SetupRepository:
             )
             .limit(1)
         )
-        return self.db.execute(stmt_apto).scalars().first() is not None
-
+        return self.db.execute(stmt).scalars().first() is not None
+    
     def fetch_initial(self, id_conjunto: int, id_usuario: int):
         usr = self.db.get(Usuario, id_usuario)
 
@@ -93,44 +98,123 @@ class SetupRepository:
         self.db.add(cjto)
         self.db.flush()
         return 200
+    
+ 
+    def update_numero_torres(self, id_conjunto: int, num_torres: int) -> int:
+        res = self.db.execute(
+            update(ConjuntoResidencial)
+            .where(ConjuntoResidencial.id_conjunto_residencial == id_conjunto)
+            .values(numero_torres=num_torres)
+            .execution_options(synchronize_session="fetch")
+        )
+        return res.rowcount or 0
 
-    def generar_apartamentos(self, id_conjunto: int, torres: int, pisos_x_torre: int, aptos_x_piso: int):
-            aptos_to_insert = []
+    def update_numero_apartamentos(self, id_conjunto: int, total: int) -> int:
+        res = self.db.execute(
+            update(ConjuntoResidencial)
+            .where(ConjuntoResidencial.id_conjunto_residencial == id_conjunto)
+            .values(numero_apartamentos=total)
+            .execution_options(synchronize_session="fetch")
+        )
+        return res.rowcount or 0
 
-            for j in range(1, pisos_x_torre + 1):          # pisos
-                for i in range(1, torres + 1):             # torres
-                    for k in range(1, aptos_x_piso + 1):   # aptos por piso
-                        # Numeración continua por piso a través de torres, y reinicia por piso
-                        sec_en_piso = (i - 1) * aptos_x_piso + k          # 1..(torres*aptos_x_piso)
-                        numero_apto = j * 100 + sec_en_piso               # ej: 1*100 + 1 -> 101
+    def generar_apartamentos_preservando_asignaciones(
+        self,
+        id_conjunto: int,
+        torres: int,
+        pisos_x_torre: int,
+        aptos_x_piso: int,
+        reset_parqueadero: bool = True,
+    ) -> dict:
 
-                        aptos_to_insert.append({
-                            "torre": f"Torre {i}",
-                            "numero_apto": numero_apto,   # entero, no string
-                            "piso": j
-                        })
-
-            # Inserción (mejor flush/commit fuera del bucle)
-            for a in aptos_to_insert:
-                self.db.add(Apartamento(
-                    numero_apartamento=a["numero_apto"],
-                    nombre_torre=a["torre"],
-                    piso=a["piso"],
-                    conjunto_residencial_id=id_conjunto
-                ))
-
+        # --- helpers internos seguros ---
+        def _safe_int(v, default=None):
             try:
-                self.db.flush()
+                return int(v)
+            except (TypeError, ValueError):
+                return default
 
-                # Actualizar total de apartamentos del conjunto
-                self.db.execute(
-                    update(ConjuntoResidencial)
-                    .where(ConjuntoResidencial.id_conjunto_residencial == id_conjunto)
-                    .values(numero_apartamentos=len(aptos_to_insert))
-                    .execution_options(synchronize_session="fetch")
-                )
-                self.db.flush()
-                self.db.commit()
-            except Exception as e:
-                self.db.rollback()
-                raise e
+        def _key_from(apto):
+            torre = (apto.nombre_torre or "").strip()
+            piso = _safe_int(getattr(apto, "piso", None), default=None)
+            num = _safe_int(getattr(apto, "numero_apartamento", None), default=None)
+            if piso is None or num is None:
+                return None
+            return (torre, piso, num)
+
+        # 1) obtener apartamentos existentes del conjunto
+        existentes = self.db.execute(
+            select(Apartamento).where(Apartamento.conjunto_residencial_id == id_conjunto)
+        ).scalars().all()
+
+        index_existentes = {}
+        incompletos = 0
+        for a in existentes:
+            k = _key_from(a)
+            if k is None:
+                incompletos += 1
+                continue
+            index_existentes.setdefault(k, a)
+
+        insertados = 0
+        actualizados = 0
+        sin_cambios = 0
+
+        # 2) generar nueva malla de torres/pisos/apartamentos
+        for i in range(1, torres + 1):
+            torre_name = f"Torre {i}"
+            for j in range(1, pisos_x_torre + 1):
+                for k in range(1, aptos_x_piso + 1):
+                    numero_apto = j * 100 + k
+                    k_objetivo = (torre_name, j, numero_apto)
+
+                    if k_objetivo in index_existentes:
+                        apto = index_existentes[k_objetivo]
+                        changed = False
+
+                        if (apto.nombre_torre or "").strip() != torre_name:
+                            apto.nombre_torre = torre_name
+                            changed = True
+                        if _safe_int(apto.piso) != j:
+                            apto.piso = j
+                            changed = True
+                        if _safe_int(apto.numero_apartamento) != numero_apto:
+                            apto.numero_apartamento = numero_apto
+                            changed = True
+
+                        if reset_parqueadero and getattr(apto, "numero_parqueadero", None) is not None:
+                            apto.numero_parqueadero = None
+                            changed = True
+
+                        if changed:
+                            actualizados += 1
+                        else:
+                            sin_cambios += 1
+                    else:
+                        nuevo = Apartamento(
+                            conjunto_residencial_id=id_conjunto,
+                            nombre_torre=torre_name,
+                            piso=j,
+                            numero_apartamento=numero_apto,
+                            numero_parqueadero=None,
+                            usuario_id=None,  # no asigna usuario
+                        )
+                        self.db.add(nuevo)
+                        insertados += 1
+
+        total_planeado = torres * pisos_x_torre * aptos_x_piso
+
+        # 3) actualizar totales del conjunto
+        self.update_numero_torres(id_conjunto, torres)
+        self.update_numero_apartamentos(id_conjunto, total_planeado)
+
+        self.db.flush()
+
+        return {
+            "insertados": insertados,
+            "actualizados": actualizados,
+            "sin_cambios": sin_cambios,
+            "total_planeado": total_planeado,
+            "existentes_previos": len(existentes),
+            "existentes_incompletos": incompletos,
+        }
