@@ -5,7 +5,7 @@ from app.infrastructure.db.session import get_db
 from app.application.common.use_case.schemas.auth import (
     FirstTimeRegisterIn, LoginIn, LoginOut,
 )
-from app.repositories.usuario_respository import UsuariosRepository
+from app.infrastructure.repositories.usuario_respository import UsuariosRepository
 from app.application.common.use_case.auth_first_time_register import FirstTimeRegisterUseCase
 from app.application.common.use_case.schemas.auth_login import AuthLoginUseCase
 from app.infrastructure.db.models.model import Usuario , Apartamento

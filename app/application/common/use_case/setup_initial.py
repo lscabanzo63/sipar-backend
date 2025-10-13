@@ -1,7 +1,7 @@
 from app.application.common.use_case.schemas.setup_schemas import (
     SetupInitialOut, SetupInitialUpdateIn, SetupActionResult, FieldError, TorresConfigIn
 )
-from app.repositories.setup_repository import SetupRepository
+from app.infrastructure.repositories.setup_repository import SetupRepository
 
 class SetupInitialGetUseCase:
     def __init__(self, repo: SetupRepository):
