@@ -1,7 +1,7 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Table, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
@@ -42,7 +42,7 @@ class Norma(Base):
     id_norma: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre_norma: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    sorteo: Mapped[list['Sorteo']] = relationship('Sorteo', secondary='sorteo_norma', back_populates='norma')
+    sorteo_norma: Mapped[list['SorteoNorma']] = relationship('SorteoNorma', back_populates='norma')
 
 
 class TipoUsuario(Base):
@@ -150,11 +150,11 @@ class Sorteo(Base):
 
     id_sorteo: Mapped[int] = mapped_column(Integer, primary_key=True)
     conjunto_residencial_id: Mapped[Optional[int]] = mapped_column(Integer)
-    periodicidad: Mapped[Optional[str]] = mapped_column(Text)
+    periodicidad: Mapped[Optional[str]] = mapped_column(Enum('TRIMESTRAL', 'CUATRIMESTRAL', 'SEMESTRAL', name='periodicidad_enum'))
 
-    norma: Mapped[list['Norma']] = relationship('Norma', secondary='sorteo_norma', back_populates='sorteo')
     conjunto_residencial: Mapped[Optional['ConjuntoResidencial']] = relationship('ConjuntoResidencial', back_populates='sorteo')
     sorteo_fecha: Mapped[list['SorteoFecha']] = relationship('SorteoFecha', back_populates='sorteo')
+    sorteo_norma: Mapped[list['SorteoNorma']] = relationship('SorteoNorma', back_populates='sorteo')
     resultado_sorteo: Mapped[list['ResultadoSorteo']] = relationship('ResultadoSorteo', back_populates='sorteo')
 
 
@@ -169,21 +169,28 @@ class SorteoFecha(Base):
     id_sorteo_fecha: Mapped[int] = mapped_column(Integer, primary_key=True)
     sorteo_id: Mapped[int] = mapped_column(Integer, nullable=False)
     fecha: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    estado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
 
     sorteo: Mapped['Sorteo'] = relationship('Sorteo', back_populates='sorteo_fecha')
     resultado_sorteo: Mapped[list['ResultadoSorteo']] = relationship('ResultadoSorteo', back_populates='sorteo_fecha')
 
 
-t_sorteo_norma = Table(
-    'sorteo_norma', Base.metadata,
-    Column('sorteo_id', Integer, primary_key=True),
-    Column('norma_id', Integer, primary_key=True),
-    ForeignKeyConstraint(['norma_id'], ['norma.id_norma'], ondelete='CASCADE', name='sorteo_norma_norma_id_fkey'),
-    ForeignKeyConstraint(['sorteo_id'], ['sorteo.id_sorteo'], ondelete='CASCADE', name='sorteo_norma_sorteo_id_fkey'),
-    PrimaryKeyConstraint('sorteo_id', 'norma_id', name='sorteo_norma_pkey'),
-    Index('sorteo_norma_norma_idx', 'norma_id'),
-    Index('sorteo_norma_sorteo_idx', 'sorteo_id')
-)
+class SorteoNorma(Base):
+    __tablename__ = 'sorteo_norma'
+    __table_args__ = (
+        ForeignKeyConstraint(['norma_id'], ['norma.id_norma'], ondelete='CASCADE', name='sorteo_norma_norma_id_fkey'),
+        ForeignKeyConstraint(['sorteo_id'], ['sorteo.id_sorteo'], ondelete='CASCADE', name='sorteo_norma_sorteo_id_fkey'),
+        PrimaryKeyConstraint('sorteo_id', 'norma_id', name='sorteo_norma_pkey'),
+        Index('sorteo_norma_norma_idx', 'norma_id'),
+        Index('sorteo_norma_sorteo_idx', 'sorteo_id')
+    )
+
+    sorteo_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    norma_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    parametro: Mapped[Optional[str]] = mapped_column(Text)
+
+    norma: Mapped['Norma'] = relationship('Norma', back_populates='sorteo_norma')
+    sorteo: Mapped['Sorteo'] = relationship('Sorteo', back_populates='sorteo_norma')
 
 
 class ResultadoSorteo(Base):
@@ -198,6 +205,7 @@ class ResultadoSorteo(Base):
 
     id_resultado_sorteo: Mapped[int] = mapped_column(Integer, primary_key=True)
     sorteo_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    estado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
     sorteo_fecha_id: Mapped[Optional[int]] = mapped_column(Integer)
 
     sorteo_fecha: Mapped[Optional['SorteoFecha']] = relationship('SorteoFecha', back_populates='resultado_sorteo')
