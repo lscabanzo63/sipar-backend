@@ -1,7 +1,7 @@
 import hmac
 from sqlalchemy.orm import Session
-from sqlalchemy import select
-from typing import Optional
+from sqlalchemy import select, text
+from typing import Optional, List, Tuple
 from app.infrastructure.db.models.model import Usuario, Apartamento
 
 class UsuariosRepository:
@@ -40,3 +40,4 @@ class UsuariosRepository:
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+    
