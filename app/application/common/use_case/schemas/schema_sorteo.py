@@ -44,7 +44,6 @@ class ConfigIn(BaseModel):
     )
     normas: List[ReglaIn] = Field(..., description="Listado de normas a aplicar")
 
-    # 👇 Esto hace que Swagger muestre ejemplos listos para usar
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
@@ -87,7 +86,6 @@ class ConfigIn(BaseModel):
     )
 
 
-# ------- RESPUESTA -------
 
 class ReglaOut(BaseModel):
     tipo: ReglaTipoEnum
@@ -98,26 +96,24 @@ class ConfigOut(BaseModel):
     id_sorteo: int
     conjunto_id: int
     periodicidad: PeriodicidadEnum
+    sequence_id: int            
     fechas_programadas: List[datetime]
     reglas_asignadas: List[ReglaOut]
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "id_sorteo": 1,
-                "conjunto_id": 1,
-                "periodicidad": "TRIMESTRAL",
-                "fechas_programadas": [
-                    "2026-01-15T00:00:00",
-                    "2026-04-15T00:00:00",
-                    "2026-07-15T00:00:00",
-                    "2026-10-15T00:00:00"
-                ],
-                "reglas_asignadas": [
-                    {"tipo": "PRIORIDAD_PROPIETARIO"},
-                    {"tipo": "PAGO_ADMINISTRACION"},
-                    {"tipo": "ROTACION", "parametros": {"n": 3}}
-                ]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id_sorteo": 1,
+            "conjunto_id": 1,
+            "periodicidad": "TRIMESTRAL",
+            "sequence_id": 2,     
+            "fechas_programadas": [
+                "2026-01-15T00:00:00","2026-04-15T00:00:00",
+                "2026-07-15T00:00:00","2026-10-15T00:00:00"
+            ],
+            "reglas_asignadas": [
+                {"tipo": "PRIORIDAD_PROPIETARIO"},
+                {"tipo": "PAGO_ADMINISTRACION"},
+                {"tipo": "ROTACION", "parametros": {"n": 3}}
+            ]
         }
-    )
+    })
