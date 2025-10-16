@@ -1,10 +1,14 @@
 # app/interfaces/routers/sorteo_router.py
+from app.application.common.use_case.get_sorteo_config_usecase import GetSorteoConfig
 from fastapi import APIRouter, Depends, HTTPException, Path, Body
+from sqlalchemy.orm import Session
 from app.application.common.use_case.schemas.schema_sorteo import ConfigIn, ConfigOut, ReglaOut
 from app.infrastructure.db.dependencies import get_repo
 from app.infrastructure.repositories.sorteo_repository import SorteoRepo
 from app.application.common.use_case.sorteo_usecase import UpsertSorteoConfig
 from app.domain.Exeptions.exceptions import DomainError
+from app.infrastructure.db.models.deps import get_session  
+
 
 router = APIRouter(prefix="/api/v1/conjuntos", tags=["sorteos"])
 
@@ -47,5 +51,22 @@ def upsert_config(
             reglas_asignadas=reglas
         )
 
+    except DomainError as e:
+        raise HTTPException(status_code=e.status, detail={"code": e.code, "message": e.message})
+    
+def get_sorteo_repo(db: Session = Depends(get_session)) -> SorteoRepo:
+    return SorteoRepo(db)  
+
+@router.get(
+    "/{id_conjunto}/sorteos/",
+    response_model=ConfigOut,
+    summary="Obtener configuración de sorteo del conjunto",
+)
+def obtener_configuracion_sorteo(
+    id_conjunto: int = Path(..., ge=1),
+    repo: SorteoRepo = Depends(get_sorteo_repo),
+):
+    try:
+        return GetSorteoConfig(repo)(conjunto_id=id_conjunto)
     except DomainError as e:
         raise HTTPException(status_code=e.status, detail={"code": e.code, "message": e.message})

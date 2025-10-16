@@ -1,4 +1,5 @@
 from typing import Optional, List, Dict
+import unicodedata
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -78,6 +79,53 @@ class SorteoRepo:
                 INSERT INTO public.sorteo_norma (sorteo_id, norma_id, parametro)
                 VALUES (:sid, :nid, :parametro)
             """), {"sid": sorteo_id, "nid": nid, "parametro": parametro})
+    
+    def obtener_sorteo_por_conjunto(self, conjunto_id: int):
+        q = text("""
+            SELECT s.id_sorteo, s.conjunto_residencial_id, s.periodicidad, s.sequence_id
+            FROM public.sorteo s
+            WHERE s.conjunto_residencial_id = :cid
+            LIMIT 1
+        """)
+        row = self.session.execute(q, {"cid": conjunto_id}).mappings().first()
+        return dict(row) if row else None
+
+    def obtener_fechas_sorteo(self, sorteo_id: int) -> List[Dict]:
+            q = text("""
+                SELECT id_sorteo_fecha, fecha, estado
+                FROM public.sorteo_fecha
+                WHERE sorteo_id = :sid
+                ORDER BY fecha
+            """)
+            return [dict(r) for r in self.session.execute(q, {"sid": sorteo_id}).mappings().all()]
+
+    def _normalize(self, s: str) -> str:
+            return ''.join(
+                c for c in unicodedata.normalize('NFD', s.upper())
+                if unicodedata.category(c) != 'Mn'
+            )
+
+    def obtener_normas_sorteo(self, sorteo_id: int) -> List[Dict]:
+            q = text("""
+                SELECT n.nombre_norma, sn.parametro
+                FROM public.sorteo_norma sn
+                JOIN public.norma n ON n.id_norma = sn.norma_id
+                WHERE sn.sorteo_id = :sid
+                ORDER BY n.nombre_norma
+            """)
+            out: List[Dict] = []
+            for r in self.session.execute(q, {"sid": sorteo_id}).mappings().all():
+                nombre = self._normalize(r["nombre_norma"])
+                if nombre == "ROTACION":
+                    val = r["parametro"]
+                    try:
+                        n = int(val) if val is not None and str(val).strip() != "" else None
+                    except (ValueError, TypeError):
+                        n = None
+                    out.append({"tipo": "ROTACION", "parametros": {"n": n}})
+                else:
+                    out.append({"tipo": nombre})
+            return out
 
     def commit(self): self.session.commit()
     def rollback(self): self.session.rollback()

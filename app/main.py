@@ -1,3 +1,4 @@
+from app.interfaces.routers import ejecucion_sorteo_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.infrastructure.db.base import Base
@@ -10,12 +11,11 @@ app = FastAPI(title="SIPAR API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # ajusta a tu front
+    allow_origins=["http://localhost:3000"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 Base.metadata.create_all(bind=engine)
 app.include_router(auth_router)
 app.include_router(setup_router)
