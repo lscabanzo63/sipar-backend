@@ -1,11 +1,16 @@
 from typing import Optional
 import datetime
-
+from pydantic import BaseModel
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
+
+
+class User(BaseModel):
+    id: int
+    rol: str
 
 
 class Departamento(Base):
@@ -149,6 +154,7 @@ class Sorteo(Base):
     )
 
     id_sorteo: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sequence_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text('1'))
     conjunto_residencial_id: Mapped[Optional[int]] = mapped_column(Integer)
     periodicidad: Mapped[Optional[str]] = mapped_column(Enum('TRIMESTRAL', 'CUATRIMESTRAL', 'SEMESTRAL', name='periodicidad_enum'))
 
