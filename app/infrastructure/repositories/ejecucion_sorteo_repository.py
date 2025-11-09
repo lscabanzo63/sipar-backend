@@ -2,10 +2,11 @@ from contextlib import contextmanager
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy import asc, func, desc
+from sqlalchemy import Date,func, desc
 from app.application.common.use_case.schemas.ejecucion_sorteo_schema import GanadorResumen
 from app.domain.Exeptions.exceptions import AppException
 from app.infrastructure.db.models.model import Sorteo, SorteoFecha, SorteoNorma, Norma, ResultadoSorteo, ResultadoSorteoDetalle, ConjuntoResidencial, Apartamento, Usuario, TipoUsuario
+from dateutil.relativedelta import relativedelta
 from typing import List, Tuple
 from fastapi import status
 import random
@@ -58,20 +59,46 @@ class EjecucionSorteoRepository:
             ) from e
         
     def get_proxima_fecha_disponible(self, sorteo_id: int, fecha_actual: datetime) -> SorteoFecha:
-        fecha = self.db.query(SorteoFecha).filter(
-            SorteoFecha.sorteo_id == sorteo_id,
-            SorteoFecha.fecha > fecha_actual,
-            SorteoFecha.estado == False
-        ).order_by(SorteoFecha.fecha.asc()).first()
-        
-        if not fecha:
+        try:
+            # Buscar exactamente la fecha solicitada
+            fecha_solicitada = self.db.query(SorteoFecha).filter(
+                SorteoFecha.sorteo_id == sorteo_id,
+                SorteoFecha.fecha == fecha_actual  # Comparación exacta
+            ).first()
+    
+            if not fecha_solicitada:
+                raise AppException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"La fecha {fecha_actual.strftime('%Y-%m-%d')} no está programada para este sorteo",
+                    code="ERR_FECHA_NO_PROGRAMADA"
+                )
+    
+            # Verificar si la fecha específica ya fue ejecutada
+            if fecha_solicitada.estado:
+                raise AppException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El sorteo para la fecha {fecha_actual.strftime('%Y-%m-%d')} ya fue ejecutado",
+                    code="ERR_FECHA_YA_EJECUTADA"
+                )
+    
+            return fecha_solicitada
+    
+        except Exception as e:
+            if isinstance(e, AppException):
+                raise
             raise AppException(
-                status_code=400,
-                detail="No hay fechas disponibles",
-                code="ERR_NO_DATES"
-            )
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error obteniendo la fecha del sorteo",
+                code="ERR_GET_FECHA"
+            ) from e
         
-        return fecha
+    def _get_intervalo_por_periodicidad(self, periodicidad: str) -> relativedelta:
+        intervalos = {
+            'TRIMESTRAL': relativedelta(months=3),
+            'CUATRIMESTRAL': relativedelta(months=4),
+            'SEMESTRAL': relativedelta(months=6)
+        }
+        return intervalos.get(periodicidad, relativedelta(months=3))
 
     def get_normas_activas(self, sorteo_id: int) -> List[Norma]:
         return self.db.query(Norma).join(SorteoNorma).filter(SorteoNorma.sorteo_id == sorteo_id).all()
@@ -236,3 +263,4 @@ class EjecucionSorteoRepository:
             user = self.db.query(Usuario).filter(Usuario.id_usuario == det.usuario_id).first()
             summaries.append(GanadorResumen(usuario_id=det.usuario_id, nombre=f"{user.nombre} {user.apellidos}", numero_parqueadero=det.numero_parqueadero))
         return summaries
+        

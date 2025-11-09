@@ -23,7 +23,7 @@ class SorteoService:
                     detail=f"No se encontró sorteo para el conjunto {request.id_conjunto}",
                     code="ERR_SORTEO_NOT_FOUND"
                 )
-
+    
             # Validar que el sorteo tenga una periodicidad válida
             if sorteo.periodicidad not in ['TRIMESTRAL', 'CUATRIMESTRAL', 'SEMESTRAL']:
                 raise AppException(
@@ -34,9 +34,11 @@ class SorteoService:
                 
             print(f"Sorteo encontrado: {sorteo.id_sorteo}")
             
-            # Obtener próxima fecha disponible
-            fecha = self.repository.get_proxima_fecha_disponible(sorteo.id_sorteo, datetime.now())
+            # Usar la fecha del request en lugar de datetime.now()
+            fecha = self.repository.get_proxima_fecha_disponible(sorteo.id_sorteo, request.fecha_actual)
             print(f"Fecha próxima: {fecha.fecha if fecha else 'No hay fecha'}")
+            
+            # ... resto del código ...
             
             # Obtener usuarios y aplicar reglas
             usuarios = self.repository.get_usuarios_conjunto(request.id_conjunto)
