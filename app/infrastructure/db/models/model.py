@@ -1,16 +1,11 @@
 from typing import Optional
 import datetime
-from pydantic import BaseModel
+
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
-
-
-class User(BaseModel):
-    id: int
-    rol: str
 
 
 class Departamento(Base):

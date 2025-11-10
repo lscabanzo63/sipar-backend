@@ -1,16 +1,20 @@
 # app/interfaces/routers/sorteo_router.py
 from app.application.common.use_case.get_sorteo_config_usecase import GetSorteoConfig
+from app.core.security.deps import roles_required
 from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from sqlalchemy.orm import Session
 from app.application.common.use_case.schemas.schema_sorteo import ConfigIn, ConfigOut, ReglaOut
-from app.infrastructure.db.dependencies import get_repo
+from app.infrastructure.db.dependencies import get_repo, get_session
 from app.infrastructure.repositories.sorteo_repository import SorteoRepo
 from app.application.common.use_case.sorteo_usecase import UpsertSorteoConfig
 from app.domain.Exeptions.exceptions import DomainError
-from app.infrastructure.db.models.deps import get_session  
 
 
-router = APIRouter(prefix="/api/v1/conjuntos", tags=["sorteos"])
+router = APIRouter(
+    prefix="/api/v1/conjuntos",
+    tags=["sorteos"],
+    dependencies=[Depends(roles_required("administrador", "gestor"))]
+)
 
 @router.post(
     "/{id_conjunto}/sorteos/configuracion",

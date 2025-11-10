@@ -2,7 +2,7 @@ import hmac
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from typing import Optional, List, Tuple
-from app.infrastructure.db.models.model import Usuario, Apartamento
+from app.infrastructure.db.models.model import Usuario, Apartamento, TipoUsuario
 
 class UsuariosRepository:
     def __init__(self, db: Session):
@@ -40,4 +40,16 @@ class UsuariosRepository:
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+    
+    def get_user_with_role_by_email(self, email: str):
+        stmt = (
+            select(Usuario, TipoUsuario.nombre_tipo_usuario)
+            .join(TipoUsuario, Usuario.tipo_usuario_id == TipoUsuario.id_tipo_usuario)
+            .where(Usuario.email == email)
+        )
+        result = self.db.execute(stmt).first()
+        if result:
+            user, role = result
+            return user, role
+        return None, None
     

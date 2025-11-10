@@ -1,8 +1,17 @@
+import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker,Session
 from app.settings import DATABASE_URL
+from typing import Generator
 
-SQLALCHEMY_DATABASE_URL = DATABASE_URL or "postgresql+psycopg://postgres:123456@localhost:5432/db_sipar"
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, future=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

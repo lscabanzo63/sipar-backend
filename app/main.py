@@ -1,11 +1,11 @@
 from app.interfaces.routers import ejecucion_sorteo_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.infrastructure.db.base import Base
-from app.infrastructure.db.session import engine
-from app.interfaces.routers.auth_router import router as auth_router
+from app.infrastructure.db.database import engine
+from app.api.v1.auth.auth_router import router as auth_router
 from app.interfaces.routers.setup_router import router as setup_router
 from app.interfaces.routers.sorteo_router import router as sorteo_router
+from app.infrastructure.db.models.model import Base
 from app.interfaces.routers.ejecucion_sorteo_router import router as ejecucion_sorteo_router
 
 app = FastAPI(title="SIPAR API")
