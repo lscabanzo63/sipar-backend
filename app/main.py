@@ -7,6 +7,7 @@ from app.interfaces.routers.setup_router import router as setup_router
 from app.interfaces.routers.sorteo_router import router as sorteo_router
 from app.infrastructure.db.models.model import Base
 from app.interfaces.routers.ejecucion_sorteo_router import router as ejecucion_sorteo_router
+from app.interfaces.routers import gestion_admins_router
 
 app = FastAPI(title="SIPAR API")
 
@@ -22,3 +23,5 @@ app.include_router(auth_router)
 app.include_router(setup_router)
 app.include_router(sorteo_router)
 app.include_router(ejecucion_sorteo_router)
+app.include_router(gestion_admins_router.router)
+

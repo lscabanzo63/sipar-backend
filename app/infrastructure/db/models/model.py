@@ -84,6 +84,7 @@ class Usuario(Base):
     apellidos: Mapped[str] = mapped_column(String(100), nullable=False)
     contrasena: Mapped[str] = mapped_column(String(255), nullable=False)
     first_time: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
+    estado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     telefono: Mapped[Optional[str]] = mapped_column(String(15))
     tipo_usuario_id: Mapped[Optional[int]] = mapped_column(Integer)
     email: Mapped[Optional[str]] = mapped_column(String(255))
