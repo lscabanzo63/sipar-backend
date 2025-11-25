@@ -1,19 +1,19 @@
 from passlib.context import CryptContext
-import secrets
-import string
+from passlib.exc import UnknownHashError
 
-
-_pwd = CryptContext(schemes=["argon2"], deprecated="auto")
+_pwd = CryptContext(
+    schemes=["argon2"],
+    deprecated="auto",
+)
 
 def hash_password(plain: str) -> str:
 
     return _pwd.hash(plain)
 
-def verify_password(plain: str, hashed: str) -> bool:
-    
-    return _pwd.verify(plain, hashed)
 
-def generar_password(length: int = 12) -> str:
-   
-    chars = string.ascii_letters + string.digits + string.punctuation
-    return ''.join(secrets.choice(chars) for _ in range(length))
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return _pwd.verify(plain, hashed)
+    except UnknownHashError:
+        # Caso legacy: en BD está guardado en texto plano (Adm!n#2025, Gestor123, etc.)
+        return plain == hashed

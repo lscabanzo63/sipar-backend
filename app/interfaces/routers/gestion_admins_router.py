@@ -1,3 +1,4 @@
+from secrets import token_urlsafe
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, insert, update, func
@@ -8,7 +9,7 @@ from app.infrastructure.db.database import get_db
 from app.infrastructure.db.models.model import (
     Usuario, TipoUsuario, ConjuntoResidencial, Apartamento, Ciudad
 )
-from app.core.security.passwords import generar_password, hash_password
+from app.core.security.passwords import hash_password
 from app.application.common.use_case.schemas.gestion_admin_schemas import (
     CrearAdminRequest, AdminItemOut, ToggleEstadoRequest, ModificarAdminRequest
 )
@@ -51,24 +52,26 @@ def _get_tipo_admin_id(db: Session) -> int:
 @router.post("", status_code=status.HTTP_201_CREATED)
 def crear_admin(req: CrearAdminRequest, db: Session = Depends(get_db)):
     try:
-        # Validar email único
         exists = db.execute(
-            select(func.count()).select_from(Usuario).where(Usuario.email == req.admin.email)
+            select(func.count())
+            .select_from(Usuario)
+            .where(Usuario.email == req.admin.email)
         ).scalar()
+
         if exists:
-            raise HTTPException(status_code=409, detail="El email del administrador ya existe")
-
-        # 1) Crear usuario con contraseña aleatoria
-        tipo_admin_id = _get_tipo_admin_id(db)
-        plain_password = generar_password()  # contraseña temporal
+            raise HTTPException(
+                status_code=409,
+                detail="El email del administrador ya existe",
+            )
+        plain_password = token_urlsafe(8)  
         password_hash = hash_password(plain_password)
-
+        tipo_admin_id = _get_tipo_admin_id(db)
         new_user_id = db.execute(
             insert(Usuario).values(
                 nombre=req.admin.nombres,
                 apellidos=req.admin.apellidos,
                 telefono=req.admin.telefono,
-                contrasena=password_hash,
+                contrasena=password_hash,      
                 tipo_usuario_id=tipo_admin_id,
                 first_time=True,
                 email=req.admin.email,
@@ -78,8 +81,9 @@ def crear_admin(req: CrearAdminRequest, db: Session = Depends(get_db)):
             ).returning(Usuario.id_usuario)
         ).scalar_one()
 
-        # 2) Crear conjunto residencial
+
         ciudad_id = _get_ciudad_id(db, req.conjunto.ciudad)
+
         new_conjunto_id = db.execute(
             insert(ConjuntoResidencial).values(
                 nombre_conjunto=req.conjunto.nombre,
@@ -93,7 +97,7 @@ def crear_admin(req: CrearAdminRequest, db: Session = Depends(get_db)):
             ).returning(ConjuntoResidencial.id_conjunto_residencial)
         ).scalar_one()
 
-        # 3) Crear apartamento placeholder
+        # 6) Crear apartamento placeholder
         db.execute(
             insert(Apartamento).values(
                 usuario_id=new_user_id,
@@ -103,12 +107,13 @@ def crear_admin(req: CrearAdminRequest, db: Session = Depends(get_db)):
 
         db.commit()
 
-        # Devolver también la contraseña generada
+
         return {
             "status": "created",
             "id_usuario": new_user_id,
             "id_conjunto": new_conjunto_id,
-            "password_temporal": plain_password
+            "password_temporal": plain_password,  
+            
         }
 
     except HTTPException:
@@ -116,8 +121,20 @@ def crear_admin(req: CrearAdminRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al crear administrador: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al crear administrador: {type(e).__name__}",
+        )
 
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al crear administrador: {type(e).__name__}"
+        )
 
 @router.get("", response_model=List[AdminItemOut])
 def listar_admins(db: Session = Depends(get_db)):
