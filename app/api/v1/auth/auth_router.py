@@ -23,6 +23,7 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 def login(request: LoginRequest, db: Session = Depends(get_db)):
+    # Buscar usuario por email
     stmt = (
         select(Usuario)
         .join(TipoUsuario, Usuario.tipo_usuario_id == TipoUsuario.id_tipo_usuario)
@@ -36,21 +37,30 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Credenciales incorrectas",
         )
 
+    # Validar estado del usuario (bloqueado / inactivo)
     if not user.estado:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="El usuario se encuentra bloqueado",
         )
 
+    # Validar contraseña
     if not verify_password(request.contrasena, user.contrasena):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
         )
 
+    # Tipo de usuario / rol
     tipo_usuario_nombre = (
         user.tipo_usuario.nombre_tipo_usuario if user.tipo_usuario else "SIN_ROL"
     )
+
+    first_time_flag = bool(user.first_time)
+
+    if user.first_time:
+        user.first_time = False
+        db.commit()  
 
     conjunto_id = None
     conjunto_nombre = None
@@ -67,6 +77,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         conjunto_id = apto.conjunto_residencial.id_conjunto_residencial
         conjunto_nombre = apto.conjunto_residencial.nombre_conjunto
 
+    # Crear token JWT
     token = create_access_token(
         subject=user.email,
         role=tipo_usuario_nombre,
@@ -84,5 +95,6 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             "tipo_usuario": tipo_usuario_nombre,
             "conjunto_id": conjunto_id,
             "conjunto_nombre": conjunto_nombre,
+            "first_time": first_time_flag,  
         },
     }
