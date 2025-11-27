@@ -1,17 +1,18 @@
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy import Date, and_, func, desc
+from sqlalchemy import and_, func
+from typing import Any, Dict, List, Tuple
+
 from app.application.common.use_case.schemas.ejecucion_sorteo_schema import GanadorResumen
 from app.domain.Exeptions.exceptions import AppException
 from app.infrastructure.db.models.model import (
     Sorteo, SorteoFecha, SorteoNorma, Norma,
     ResultadoSorteo, ResultadoSorteoDetalle,
-    ConjuntoResidencial, Apartamento, Usuario, TipoUsuario
+    ConjuntoResidencial, Apartamento, Usuario
 )
-from dateutil.relativedelta import relativedelta
-from typing import List, Tuple
 from fastapi import status
 import random
 import json
@@ -42,6 +43,8 @@ class EjecucionSorteoRepository:
                 detail="Error en la base de datos",
                 code="ERR_DB_ERROR"
             ) from e
+
+    # ========== BÁSICOS ==========
 
     def get_sorteo_by_conjunto(self, id_conjunto: int) -> Sorteo:
         try:
@@ -113,79 +116,75 @@ class EjecucionSorteoRepository:
                 code="ERR_GET_FECHA"
             ) from e
 
-    def _get_intervalo_por_periodicidad(self, periodicidad: str) -> relativedelta:
-        intervalos = {
-            'TRIMESTRAL': relativedelta(months=3),
-            'CUATRIMESTRAL': relativedelta(months=4),
-            'SEMESTRAL': relativedelta(months=6),
-        }
-        # Si llega algo raro, por defecto 3 meses
-        return intervalos.get(periodicidad, relativedelta(months=3))
+    # ========== NORMAS ==========
 
-    def contar_ganadas_en_periodo(
-        self,
-        usuario_id: int,
-        sorteo_id: int,
-        fecha_referencia: datetime,
-        periodicidad: str,
-    ) -> int:
-        intervalo = self._get_intervalo_por_periodicidad(periodicidad)
-        fecha_inicio_periodo = fecha_referencia - intervalo
+    def _normalize_norma_name(self, name: str) -> str:
+        """
+        Normaliza el nombre de la norma:
+        - Quita tildes
+        - Pasa a mayúsculas
+        Ej: "ROTACIÓN" -> "ROTACION"
+        """
+        if not name:
+            return ""
+        nfkd = unicodedata.normalize("NFKD", name)
+        sin_tildes = "".join(c for c in nfkd if not unicodedata.combining(c))
+        return sin_tildes.upper()
 
-        query = (
-            self.db.query(func.count(ResultadoSorteoDetalle.id_resultado_sorteo_detalle))
-            .join(
-                ResultadoSorteo,
-                ResultadoSorteoDetalle.resultado_sorteo_id == ResultadoSorteo.id_resultado_sorteo,
-            )
-            .join(
-                SorteoFecha,
-                ResultadoSorteo.sorteo_fecha_id == SorteoFecha.id_sorteo_fecha,
-            )
-            .filter(ResultadoSorteo.sorteo_id == sorteo_id)
-            .filter(ResultadoSorteoDetalle.usuario_id == usuario_id)
-            .filter(
-                and_(
-                    SorteoFecha.fecha >= fecha_inicio_periodo,
-                    SorteoFecha.fecha <= fecha_referencia,
-                )
-            )
-        )
-
-        total_ganadas = query.scalar() or 0
-        return total_ganadas
-
-    def get_normas_activas(self, sorteo_id: int) -> List[Norma]:
-        # Puedes añadir filtro de activa aquí si tu modelo lo tiene
-        return (
-            self.db.query(Norma)
-            .join(SorteoNorma)
+    def get_normas_config(self, sorteo_id: int) -> Dict[str, Dict[str, Any]]:
+        rows = (
+            self.db.query(Norma, SorteoNorma)
+            .join(SorteoNorma, SorteoNorma.norma_id == Norma.id_norma)
             .filter(SorteoNorma.sorteo_id == sorteo_id)
             .all()
         )
 
+        config: Dict[str, Dict[str, Any]] = {}
+
+        for norma, sorteo_norma in rows:
+            key = self._normalize_norma_name(norma.nombre_norma)
+            config[key] = {
+                # sorteo_norma solo tiene sorteo_id, norma_id, parametro
+                # así que asumimos "activa" = True mientras exista el registro
+                "activa": True,
+                "parametro": sorteo_norma.parametro,
+            }
+
+        print("[DEBUG] Normas normalizadas:", config)
+        return config
+
     def get_n_max_ganadas(self, sorteo_id: int) -> int | None:
         """
         Obtiene el valor de 'n' para la norma ROTACION del sorteo.
-        Lee el campo SorteoNorma.parametro (TEXT, normalmente JSON).
+        Lee el campo SorteoNorma.parametro (TEXT, normalmente JSON o un simple número).
         """
-        row = (
-            self.db.query(SorteoNorma)
+        rows = (
+            self.db.query(SorteoNorma, Norma)
             .join(Norma, SorteoNorma.norma_id == Norma.id_norma)
             .filter(SorteoNorma.sorteo_id == sorteo_id)
-            .filter(Norma.nombre_norma == "ROTACION")
-            .first()
+            .all()
         )
 
-        if not row or not row.parametro:
+        target_key = "ROTACION"
+        row_found: SorteoNorma | None = None
+
+        for sorteo_norma, norma in rows:
+            nombre_norma_norm = self._normalize_norma_name(norma.nombre_norma)
+            if nombre_norma_norm == target_key:
+                row_found = sorteo_norma
+                break
+
+        if not row_found or not row_found.parametro:
             return None
 
+        raw_param = row_found.parametro
+
         try:
-            data = json.loads(row.parametro)
+            data = json.loads(raw_param)
         except Exception:
             # Si el texto es "3" o algo no JSON estándar
             try:
-                return int(row.parametro)
+                return int(raw_param)
             except Exception:
                 return None
 
@@ -219,10 +218,9 @@ class EjecucionSorteoRepository:
                     except Exception:
                         pass
 
-        # Si nada funcionó, devolvemos None
         return None
 
-    # ========= DATOS BASE =========
+    # ========== DATOS BASE ==========
 
     def get_num_parqueaderos(self, id_conjunto: int) -> int:
         conjunto = (
@@ -241,59 +239,113 @@ class EjecucionSorteoRepository:
         )
     
     def get_usuario(self, usuario_id: int) -> Usuario:
-        """
-        Obtiene un usuario por su ID
-        Returns: Usuario object or None
-        """
         return (
             self.db.query(Usuario)
             .filter(Usuario.id_usuario == usuario_id)
             .first()
         )
 
-    # ========= APLICACIÓN DE REGLAS =========
+    # ========== ROTACIÓN ==========
+
+    def get_ultimas_fechas_ids(
+        self,
+        sorteo_id: int,
+        fecha_referencia: datetime,
+        n_periodos: int,
+    ) -> list[int]:
+        """
+        Devuelve los IDs de las últimas `n_periodos` fechas de sorteo
+        ANTES de `fecha_referencia` para el sorteo dado.
+        """
+        if n_periodos <= 0:
+            return []
+
+        rows = (
+            self.db.query(SorteoFecha.id_sorteo_fecha)
+            .filter(SorteoFecha.sorteo_id == sorteo_id)
+            .filter(SorteoFecha.fecha < fecha_referencia)
+            .order_by(SorteoFecha.fecha.desc())
+            .limit(n_periodos)
+            .all()
+        )
+
+        return [r.id_sorteo_fecha for r in rows]
+
+    def get_usuarios_bloqueados_rotacion(
+        self,
+        sorteo_id: int,
+        fecha_referencia: datetime,
+        n_periodos: int,
+    ) -> set[int]:
+        """
+        Devuelve los usuario_id que GANARON en los últimos `n_periodos`
+        sorteos ANTES de `fecha_referencia`.
+        """
+        fechas_ids = self.get_ultimas_fechas_ids(
+            sorteo_id=sorteo_id,
+            fecha_referencia=fecha_referencia,
+            n_periodos=n_periodos,
+        )
+
+        if not fechas_ids:
+            return set()
+
+        rows = (
+            self.db.query(ResultadoSorteoDetalle.usuario_id)
+            .join(
+                ResultadoSorteo,
+                ResultadoSorteoDetalle.resultado_sorteo_id == ResultadoSorteo.id_resultado_sorteo,
+            )
+            .filter(ResultadoSorteo.sorteo_id == sorteo_id)
+            .filter(ResultadoSorteo.sorteo_fecha_id.in_(fechas_ids))
+            .distinct()
+            .all()
+        )
+
+        bloqueados = {r.usuario_id for r in rows}
+        print("[ROTACION] Bloqueando usuarios:", bloqueados)
+        return bloqueados
 
     def aplicar_rotacion(
         self,
         usuarios: List[Usuario],
-        n_max_ganadas: int,
+        n_periodos_bloqueo: int,
         sorteo_id: int,
         fecha_referencia: datetime,
-        periodicidad: str,
+        periodicidad: str,  # no lo usamos aquí, pero lo dejamos por compatibilidad
     ) -> List[Usuario]:
         """
-        Versión simplificada:
-        - Un usuario puede ganar como máximo `n_max_ganadas` veces
-          en TODO el sorteo (todas las fechas).
-        - Si ya alcanzó ese límite, se excluye.
+        Rotación basada en las últimas N fechas del sorteo:
+
+        - n_periodos_bloqueo = 1 → bloqueo ganadores del último sorteo.
+        - n_periodos_bloqueo = 2 → bloqueo ganadores de los últimos 2 sorteos, etc.
         """
-        if n_max_ganadas is None:
+        if not n_periodos_bloqueo or n_periodos_bloqueo <= 0:
             return usuarios
 
-        usuarios_filtrados: List[Usuario] = []
+        usuarios_bloqueados = self.get_usuarios_bloqueados_rotacion(
+            sorteo_id=sorteo_id,
+            fecha_referencia=fecha_referencia,
+            n_periodos=n_periodos_bloqueo,
+        )
 
-        for u in usuarios:
-            total_ganadas = self.contar_ganadas_total(
-                usuario_id=u.id_usuario,
-                sorteo_id=sorteo_id,
-            )
+        if not usuarios_bloqueados:
+            return usuarios
 
-            # print(f"[ROTACION] usuario {u.id_usuario} ha ganado {total_ganadas} veces")
+        filtrados = [u for u in usuarios if u.id_usuario not in usuarios_bloqueados]
+        print(f"[ROTACION] Usuarios antes: {len(usuarios)}, después: {len(filtrados)}")
+        return filtrados
 
-            if total_ganadas < n_max_ganadas:
-                usuarios_filtrados.append(u)
-
-        return usuarios_filtrados
+    # ========== OTRAS REGLAS ==========
 
     def aplicar_pago_administracion(self, usuarios: List[Usuario]) -> List[Usuario]:
-        # Solo usuarios que tienen administracion==True
         return [u for u in usuarios if u.administracion]
 
     def aplicar_prioridad_propietario(self, usuarios: List[Usuario]) -> List[Usuario]:
         # Propietarios primero (asumiendo tipo_usuario_id == 1)
         return sorted(usuarios, key=lambda u: u.tipo_usuario_id != 1)
 
-    # ========= ASIGNACIÓN / PERSISTENCIA =========
+    # ========== ASIGNACIÓN / PERSISTENCIA ==========
 
     def asignar_parqueaderos(self, usuarios: List[Usuario], id_conjunto: int) -> List[Tuple[int, int]]:
         """
@@ -360,7 +412,6 @@ class EjecucionSorteoRepository:
             ) from e
 
     def create_detalles(self, resultado_id: int, ganadores: List[Tuple[int, int]]) -> None:
-
         try:
             for usuario_id, parqueadero in ganadores:
                 detalle = ResultadoSorteoDetalle(
@@ -378,79 +429,4 @@ class EjecucionSorteoRepository:
                 code="ERR_CREATE_DETALLES"
             ) from e
 
-    def update_apartamentos_parqueaderos(self, ganadores: List[Tuple[int, int]]):
-        for uid, park in ganadores:
-            apto = self.db.query(Apartamento).filter(Apartamento.usuario_id == uid).first()
-            if apto:
-                apto.numero_parqueadero = park
-        self.db.commit()
-
-    def marcar_fecha_ejecutada(self, sorteo_fecha_id: int):
-        fecha = (
-            self.db.query(SorteoFecha)
-            .filter(SorteoFecha.id_sorteo_fecha == sorteo_fecha_id)
-            .first()
-        )
-        if fecha:
-            fecha.estado = True
-            self.db.commit()
-
-    def get_resultados(self, id_conjunto: int, marcar_visto: bool = False) -> List[ResultadoSorteo]:
-        sorteo = self.get_sorteo_by_conjunto(id_conjunto)
-        if not sorteo:
-            return []
-        resultados = (
-            self.db.query(ResultadoSorteo)
-            .filter(ResultadoSorteo.sorteo_id == sorteo.id_sorteo)
-            .all()
-        )
-        if marcar_visto:
-            for res in resultados:
-                if not res.estado:
-                    res.estado = True
-            self.db.commit()
-        return resultados
-
-    def get_ganadores_resumen(self, resultado_id: int) -> List[GanadorResumen]:
-        detalles = (
-            self.db.query(ResultadoSorteoDetalle)
-            .filter(ResultadoSorteoDetalle.resultado_sorteo_id == resultado_id)
-            .all()
-        )
-        summaries: List[GanadorResumen] = []
-        for det in detalles:
-            user = (
-                self.db.query(Usuario)
-                .filter(Usuario.id_usuario == det.usuario_id)
-                .first()
-            )
-            summaries.append(
-                GanadorResumen(
-                    usuario_id=det.usuario_id,
-                    nombre=f"{user.nombre} {user.apellidos}",
-                    numero_parqueadero=det.numero_parqueadero,
-                )
-            )
-        return summaries
-
-    def contar_ganadas_total(
-        self,
-        usuario_id: int,
-        sorteo_id: int,
-    ) -> int:
-        """
-        Cuenta cuántas veces ha ganado un usuario en TODO el sorteo
-        (sin importar la fecha).
-        """
-        query = (
-            self.db.query(func.count(ResultadoSorteoDetalle.id_resultado_sorteo_detalle))
-            .join(
-                ResultadoSorteo,
-                ResultadoSorteoDetalle.resultado_sorteo_id == ResultadoSorteo.id_resultado_sorteo,
-            )
-            .filter(ResultadoSorteo.sorteo_id == sorteo_id)
-            .filter(ResultadoSorteoDetalle.usuario_id == usuario_id)
-        )
-
-        total_ganadas = query.scalar() or 0
-        return total_ganadas
+    # (get_resultados / get_ganadores_resumen puedes dejarlos igual si los usas)

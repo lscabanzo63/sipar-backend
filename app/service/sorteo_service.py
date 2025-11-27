@@ -18,9 +18,9 @@ class SorteoService:
 
     def ejecutar_sorteo(self, request: EjecutarSorteoRequest) -> EjecutarSorteoResponse:
         try:
-            # Obtener sorteo configurado
+            # 1. Obtener sorteo configurado
             sorteo = self.repository.get_sorteo_by_conjunto(request.id_conjunto)
-            print(f"Sorteo encontrado: {sorteo.id_sorteo if sorteo else 'No encontrado'}")
+            print(f"[SORTEO] Sorteo encontrado: {sorteo.id_sorteo if sorteo else 'No encontrado'}")
             
             if not sorteo:
                 raise AppException(
@@ -29,7 +29,7 @@ class SorteoService:
                     code="ERR_SORTEO_NOT_FOUND"
                 )
     
-            # Validar periodicidad
+            # 2. Validar periodicidad
             if sorteo.periodicidad not in ["TRIMESTRAL", "CUATRIMESTRAL", "SEMESTRAL"]:
                 raise AppException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -40,14 +40,14 @@ class SorteoService:
                     code="ERR_INVALID_PERIODICITY",
                 )
                 
-            print(f"Sorteo encontrado: {sorteo.id_sorteo}")
+            print(f"[SORTEO] Periodicidad: {sorteo.periodicidad}")
             
-            # Usar la fecha del request (no datetime.now)
+            # 3. Obtener la fecha del sorteo a ejecutar (usa la fecha del request)
             fecha = self.repository.get_proxima_fecha_disponible(
                 sorteo.id_sorteo,
                 request.fecha_actual,
             )
-            print(f"Fecha próxima: {fecha.fecha if fecha else 'No hay fecha'}")
+            print(f"[SORTEO] Fecha próxima a ejecutar: {fecha.fecha if fecha else 'No hay fecha'}")
 
             if not fecha:
                 raise AppException(
@@ -56,22 +56,10 @@ class SorteoService:
                     code="ERR_NO_FECHA_DISPONIBLE",
                 )
 
-            # ─────────────────────────────────────────────
-            # Límite de ganadas según norma ROTACION
-            # ─────────────────────────────────────────────
-            n_max_ganadas = self.repository.get_n_max_ganadas(sorteo.id_sorteo)
-
-            # Log de depuración para verificar qué se está usando realmente
-           # print(f"[ROTACION] n_max_ganadas resuelto desde BD: {n_max_ganadas}")
-
-            # Si no hay norma ROTACION o el JSON está raro, dejamos un valor por defecto
-            # Como tú quieres trabajar con 3 cuando no se pueda leer, dejo 3.
-            if n_max_ganadas is None:
-                n_max_ganadas = 3
-               # print(f"[ROTACION] n_max_ganadas usando valor por defecto: {n_max_ganadas}")
-
-            # Obtener usuarios del conjunto
+            # 4. Obtener usuarios del conjunto
             usuarios = self.repository.get_usuarios_conjunto(request.id_conjunto)
+            print(f"[SORTEO] Usuarios iniciales en conjunto {request.id_conjunto}: {len(usuarios)}")
+
             if not usuarios:
                 raise AppException(
                     status_code=400,
@@ -79,18 +67,54 @@ class SorteoService:
                     code="ERR_NO_USERS",
                 )
 
-            # Aplicar reglas de negocio
-            usuarios = self.repository.aplicar_pago_administracion(usuarios)
+            # ─────────────────────────────────────────────
+            # 5. Leer configuración de normas para este sorteo
+            # ─────────────────────────────────────────────
+            normas_config = self.repository.get_normas_config(sorteo.id_sorteo)
+            print("[SORTEO] Normas configuradas (normalizadas):", normas_config)
 
-            usuarios = self.repository.aplicar_rotacion(
-                usuarios=usuarios,
-                n_max_ganadas=n_max_ganadas,
-                sorteo_id=sorteo.id_sorteo,
-                fecha_referencia=fecha.fecha,
-                periodicidad=sorteo.periodicidad,
-            )
+            cfg_pago = normas_config.get("PAGO_ADMINISTRACION", {})
+            cfg_prioridad = normas_config.get("PRIORIDAD_PROPIETARIO", {})
+            cfg_rotacion = normas_config.get("ROTACION", {})
 
-            usuarios = self.repository.aplicar_prioridad_propietario(usuarios)
+            aplica_pago_admin = cfg_pago.get("activa", False)
+            aplica_prioridad_prop = cfg_prioridad.get("activa", False)
+            aplica_rotacion = cfg_rotacion.get("activa", False)
+            # ─────────────────────────────────────────────
+            # 6. Aplicar reglas según configuración
+            # ─────────────────────────────────────────────
+
+            # 6.1 PAGO_ADMINISTRACION
+            if aplica_pago_admin:
+                print("[REGLA] Aplicando PAGO_ADMINISTRACION")
+                usuarios = self.repository.aplicar_pago_administracion(usuarios)
+                print(f"[REGLA] Usuarios después de PAGO_ADMINISTRACION: {len(usuarios)}")
+
+            # 6.2 ROTACION (últimas N fechas de sorteo)
+            if aplica_rotacion:
+                print("[REGLA] Aplicando ROTACION")
+                # Leer n desde la config de BD (tabla sorteo_norma)
+                n_rotacion = self.repository.get_n_max_ganadas(sorteo.id_sorteo)
+                # Si no se pudo leer nada del parámetro, asumimos 1
+                if not n_rotacion or n_rotacion <= 0:
+                    n_rotacion = 1
+
+                print(f"[REGLA] ROTACION activa con n = {n_rotacion}")
+
+                usuarios = self.repository.aplicar_rotacion(
+                    usuarios=usuarios,
+                    n_periodos_bloqueo=n_rotacion,
+                    sorteo_id=sorteo.id_sorteo,
+                    fecha_referencia=fecha.fecha,
+                    periodicidad=sorteo.periodicidad,  # la firma lo pide, aunque adentro no se use ya
+                )
+                print(f"[REGLA] Usuarios después de ROTACION: {len(usuarios)}")
+
+            # 6.3 PRIORIDAD_PROPIETARIO
+            if aplica_prioridad_prop:
+                print("[REGLA] Aplicando PRIORIDAD_PROPIETARIO")
+                usuarios = self.repository.aplicar_prioridad_propietario(usuarios)
+                print(f"[REGLA] Usuarios después de PRIORIDAD_PROPIETARIO: {len(usuarios)}")
 
             if not usuarios:
                 raise AppException(
@@ -99,29 +123,32 @@ class SorteoService:
                     code="ERR_NO_ELIGIBLE_USERS",
                 )
 
-            # Crear resultado del sorteo
+            # 7. Crear resultado del sorteo
             resultado = self.repository.create_resultado_sorteo(
                 sorteo.id_sorteo,
                 fecha.id_sorteo_fecha,
             )
+            print(f"[SORTEO] Resultado creado con id {resultado.id_resultado_sorteo}")
             
-            # Asignar parqueaderos
+            # 8. Asignar parqueaderos
             ganadores = self.repository.asignar_parqueaderos(
                 usuarios,
                 request.id_conjunto,
             )
+            print(f"[SORTEO] Ganadores asignados: {len(ganadores)}")
             
-            # Guardar detalles del resultado
+            # 9. Guardar detalles del resultado
             self.repository.create_detalles(
                 resultado.id_resultado_sorteo,
                 ganadores,
             )
 
-            # Marcar fecha como ejecutada
+            # 10. Marcar fecha como ejecutada
             fecha.estado = True
             self.db.commit()
+            print("[SORTEO] Fecha marcada como ejecutada")
 
-            # Preparar respuesta
+            # 11. Preparar respuesta
             ganadores_response = []
             for uid, park in ganadores:
                 if park is not None:
@@ -143,7 +170,7 @@ class SorteoService:
                         
         except Exception as e:
             self.db.rollback()
-            print(f"Error ejecutando sorteo: {str(e)}")
+            print(f"[SORTEO] Error ejecutando sorteo: {str(e)}")
             if isinstance(e, AppException):
                 raise
             raise AppException(
